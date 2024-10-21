@@ -129,63 +129,72 @@ def receive_passkey():
             'error': f'Failed to assign passkey: {str(e)}'
         }), 500
 
+# Second endpoint to create executable with custom name
 @app.route('/create_dot_exe', methods=['POST'])
 def create_dot_exe():
     try:
-        # Generate a unique filename
-        unique_name = generate_unique_filename()
-        unique_exe_name = f'host_{unique_name}.exe'
+        # Get filename from request
+        req = request.get_json()
+        filename = req.get('filename', 'host')  # default to 'host' if not provided
         
-        # Run PyInstaller command with unique name
-        process = subprocess.Popen(
-            ['pyinstaller', '--name', unique_exe_name, 'host.py'],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
+        # Create dotexe directory if it doesn't exist
+        if not os.path.exists('dotexe'):
+            os.makedirs('dotexe')
+        
+        # Run pyinstaller command with custom name and directory
+        import subprocess
+        process = subprocess.Popen([
+            'pyinstaller',
+            '--name', f'{filename}',  # Set custom name
+            '--distpath', './dotexe',  # Set output directory
+            'host.py'
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
         # Wait for the process to complete
         stdout, stderr = process.communicate()
         
         if process.returncode != 0:
             raise Exception(f"PyInstaller failed: {stderr.decode()}")
-        
-        # Wait for the executable to be available (max 30 seconds)
-        exe_path = os.path.join('dist', unique_exe_name)
+            
+        # Wait for exe to be available (max 30 seconds)
+        exe_path = os.path.join('dotexe', filename, f'{filename}.exe')
         max_wait = 30
         while max_wait > 0 and not os.path.exists(exe_path):
             time.sleep(1)
             max_wait -= 1
-        
+            
         if not os.path.exists(exe_path):
             raise Exception("Executable file not generated in time")
-        
+            
         return jsonify({
-            'message': 'Executable created successfully',
-            'exe_path': exe_path,
-            'filename': unique_exe_name
+            'message': f'Executable {filename}.exe created successfully',
+            'exe_path': exe_path
         }), 200
-    
+        
     except Exception as e:
         return jsonify({
             'error': f'Failed to create executable: {str(e)}'
         }), 500
 
-# Endpoint to download the executable with the provided filename
-@app.route('/download_exe/<filename>', methods=['GET'])
-def download_exe(filename):
+# Updated download endpoint to handle custom named executables
+@app.route('/download_exe', methods=['GET'])
+def download_exe():
     try:
-        exe_path = os.path.join('dist', filename)
+        filename = request.args.get('filename', 'host')  # Get filename from query params
+        exe_path = os.path.join('dotexe', filename, f'{filename}.exe')
+        
         if not os.path.exists(exe_path):
             return jsonify({'error': 'Executable file not found'}), 404
-        
+            
         return send_file(
             exe_path,
             as_attachment=True,
-            download_name=filename
+            download_name=f'{filename}.exe'
         )
-    
+        
     except Exception as e:
-        return jsonify({'error': f'Failed to download: {str(e)}'}), 500
+        return jsonify({
+            'error': f'Failed to download: {str(e)}'}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
