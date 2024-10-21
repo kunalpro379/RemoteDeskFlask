@@ -129,35 +129,53 @@ def receive_passkey():
             'error': f'Failed to assign passkey: {str(e)}'
         }), 500
 
-# Second endpoint to create executable with custom name
 @app.route('/create_dot_exe', methods=['POST'])
 def create_dot_exe():
     try:
         # Get filename from request
         req = request.get_json()
-        filename = req.get('filename', 'host')  # default to 'host' if not provided
+        filename = req.get('filename', 'host')
+        
+        # Create absolute path for dotexe directory
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dotexe_dir = os.path.join(base_dir, 'dotexe', filename)
         
         # Create dotexe directory if it doesn't exist
-        if not os.path.exists('dotexe'):
-            os.makedirs('dotexe')
+        os.makedirs(dotexe_dir, exist_ok=True)
         
-        # Run pyinstaller command with custom name and directory
+        # Clean up existing files
+        if os.path.exists(dotexe_dir):
+            for file in os.listdir(dotexe_dir):
+                file_path = os.path.join(dotexe_dir, file)
+                try:
+                    if os.path.isfile(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                except Exception as e:
+                    print(f"Error: {e}")
+
+        # Run pyinstaller command with forced overwrite
         import subprocess
         process = subprocess.Popen([
             'pyinstaller',
-            '--name', f'{filename}',  # Set custom name
-            '--distpath', './dotexe',  # Set output directory
+            '--name', filename,
+            '--distpath', dotexe_dir,
+            '--clean',  # Clean PyInstaller cache
+            '-y',      # Overwrite output directory without asking
             'host.py'
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
-        # Wait for the process to complete
         stdout, stderr = process.communicate()
         
         if process.returncode != 0:
             raise Exception(f"PyInstaller failed: {stderr.decode()}")
             
-        # Wait for exe to be available (max 30 seconds)
-        exe_path = os.path.join('dotexe', filename, f'{filename}.exe')
+        # Check for the executable (note: on Linux it won't have .exe extension)
+        exe_path = os.path.join(dotexe_dir, filename)
+        if not os.path.exists(exe_path):
+            exe_path = f"{exe_path}.exe"  # Try with .exe extension
+            
         max_wait = 30
         while max_wait > 0 and not os.path.exists(exe_path):
             time.sleep(1)
@@ -167,29 +185,35 @@ def create_dot_exe():
             raise Exception("Executable file not generated in time")
             
         return jsonify({
-            'message': f'Executable {filename}.exe created successfully',
+            'message': f'Executable {filename} created successfully',
             'exe_path': exe_path
         }), 200
         
     except Exception as e:
         return jsonify({
-            'error': f'Failed to create executable: {str(e)}'
+            'error': str(e)
         }), 500
 
-# Updated download endpoint to handle custom named executables
 @app.route('/download_exe', methods=['GET'])
 def download_exe():
     try:
-        filename = request.args.get('filename', 'host')  # Get filename from query params
-        exe_path = os.path.join('dotexe', filename, f'{filename}.exe')
+        filename = request.args.get('filename', 'host')
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        exe_dir = os.path.join(base_dir, 'dotexe', filename)
         
+        # Try both with and without .exe extension
+        exe_path = os.path.join(exe_dir, filename)
+        if not os.path.exists(exe_path):
+            exe_path = f"{exe_path}.exe"
+            
         if not os.path.exists(exe_path):
             return jsonify({'error': 'Executable file not found'}), 404
             
         return send_file(
             exe_path,
+            mimetype='application/octet-stream',
             as_attachment=True,
-            download_name=f'{filename}.exe'
+            download_name=f'{filename}.exe' if filename.endswith('.exe') else filename
         )
         
     except Exception as e:
