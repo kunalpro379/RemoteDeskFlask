@@ -109,6 +109,7 @@ def main(host, key):
     mem_dc.DeleteDC()
     win32gui.DeleteObject(screenshot.GetHandle())
     time.sleep(0.2)
+
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='pyRD')
   # parser.add_argument('addr', help='server addres', type=str)
@@ -117,3 +118,4 @@ if __name__ == '__main__':
   host='http://3.7.254.110:5000'
   key = "1234"
   main(host, key)
+
