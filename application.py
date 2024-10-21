@@ -129,62 +129,63 @@ def receive_passkey():
             'error': f'Failed to assign passkey: {str(e)}'
         }), 500
 
-# Second endpoint to create executable
 @app.route('/create_dot_exe', methods=['POST'])
 def create_dot_exe():
     try:
-        # Run pyinstaller command
-        import subprocess
-        process = subprocess.Popen(['pyinstaller', 'host.py'], 
-                                 stdout=subprocess.PIPE, 
-                                 stderr=subprocess.PIPE)
+        # Generate a unique filename
+        unique_name = generate_unique_filename()
+        unique_exe_name = f'host_{unique_name}.exe'
+        
+        # Run PyInstaller command with unique name
+        process = subprocess.Popen(
+            ['pyinstaller', '--name', unique_exe_name, 'host.py'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
         
         # Wait for the process to complete
         stdout, stderr = process.communicate()
         
         if process.returncode != 0:
             raise Exception(f"PyInstaller failed: {stderr.decode()}")
-            
-        # Wait for host.exe to be available (max 30 seconds)
-        import os
-        import time
         
-        exe_path = os.path.join('dist', 'host', 'host.exe')
+        # Wait for the executable to be available (max 30 seconds)
+        exe_path = os.path.join('dist', unique_exe_name)
         max_wait = 30
         while max_wait > 0 and not os.path.exists(exe_path):
             time.sleep(1)
             max_wait -= 1
-            
+        
         if not os.path.exists(exe_path):
             raise Exception("Executable file not generated in time")
-            
+        
         return jsonify({
             'message': 'Executable created successfully',
-            'exe_path': exe_path
+            'exe_path': exe_path,
+            'filename': unique_exe_name
         }), 200
-        
+    
     except Exception as e:
         return jsonify({
             'error': f'Failed to create executable: {str(e)}'
         }), 500
 
-# New endpoint to download the executable
-@app.route('/download_exe', methods=['GET'])
-def download_exe():
+# Endpoint to download the executable with the provided filename
+@app.route('/download_exe/<filename>', methods=['GET'])
+def download_exe(filename):
     try:
-        exe_path = os.path.join('dist', 'host', 'host.exe')
+        exe_path = os.path.join('dist', filename)
         if not os.path.exists(exe_path):
             return jsonify({'error': 'Executable file not found'}), 404
-            
+        
         return send_file(
             exe_path,
             as_attachment=True,
-            download_name='host.exe'
+            download_name=filename
         )
-        
+    
     except Exception as e:
         return jsonify({'error': f'Failed to download: {str(e)}'}), 500
-    
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
