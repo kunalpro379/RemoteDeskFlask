@@ -193,32 +193,53 @@ def create_dot_exe():
         return jsonify({
             'error': str(e)
         }), 500
-
 @app.route('/download_exe', methods=['GET'])
 def download_exe():
     try:
-        filename = request.args.get('filename', 'host')
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        exe_dir = os.path.join(base_dir, 'dotexe', filename)
-        
-        # Try both with and without .exe extension
-        exe_path = os.path.join(exe_dir, filename)
+        # Specify the fixed path to the executable file
+        filename = 'kunal_host.exe'
+        base_dir = os.path.dirname(os.path.abspath(__file__))  # Get the base directory of the current file
+        exe_path = os.path.join(base_dir, 'dotexe', 'kunal_host', filename)  # Construct the path
+
+        # Check if the executable file exists
         if not os.path.exists(exe_path):
-            exe_path = f"{exe_path}.exe"
-            
-        if not os.path.exists(exe_path):
-            return jsonify({'error': 'Executable file not found'}), 404
-            
+            return jsonify({'error': 'Executable file not found'}), 404  # Return 404 if not found
+
+        # Send the executable file as a downloadable attachment
         return send_file(
             exe_path,
-            mimetype='application/octet-stream',
-            as_attachment=True,
-            download_name=f'{filename}.exe' if filename.endswith('.exe') else filename
+            mimetype='application/octet-stream',  # Set the MIME type for an executable
+            as_attachment=True,                   # Indicate that this should be a download
+            download_name=filename                # Name of the file when downloaded
         )
-        
+
     except Exception as e:
-        return jsonify({
-            'error': f'Failed to download: {str(e)}'}), 500
+        return jsonify({'error': f'Failed to download: {str(e)}'}), 500  # Return 500 on error
+# @app.route('/download_exe', methods=['GET'])
+# def download_exe():
+#     try:
+#         filename = request.args.get('filename', 'host')
+#         base_dir = os.path.dirname(os.path.abspath(__file__))
+#         exe_dir = os.path.join(base_dir, 'dotexe', filename)
+        
+#         # Try both with and without .exe extension
+#         exe_path = os.path.join(exe_dir, filename)
+#         if not os.path.exists(exe_path):
+#             exe_path = f"{exe_path}.exe"
+            
+#         if not os.path.exists(exe_path):
+#             return jsonify({'error': 'Executable file not found'}), 404
+            
+#         return send_file(
+#             exe_path,
+#             mimetype='application/octet-stream',
+#             as_attachment=True,
+#             download_name=f'{filename}.exe' if filename.endswith('.exe') else filename
+#         )
+        
+#     except Exception as e:
+#         return jsonify({
+#             'error': f'Failed to download: {str(e)}'}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
