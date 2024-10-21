@@ -199,7 +199,7 @@ def download_exe():
         # Specify the fixed path to the executable file
         filename = 'kunal_host.exe'
         base_dir = os.path.dirname(os.path.abspath(__file__))  # Get the base directory of the current file
-        exe_path = os.path.join(base_dir, 'dotexe', 'kunal_host', filename)  # Construct the path
+        exe_path = os.path.join(base_dir,  filename)  # Construct the path
 
         # Check if the executable file exists
         if not os.path.exists(exe_path):
