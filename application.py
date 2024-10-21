@@ -197,7 +197,7 @@ def create_dot_exe():
 def download_exe():
     try:
         # Specify the fixed path to the executable file
-        filename = 'host.exe'
+        filename = 'kunal_host.exe'
         base_dir = os.path.dirname(os.path.abspath(__file__))  # Get the base directory of the current file
         exe_path = os.path.join(base_dir, 'dotexe', 'kunal_host', filename)  # Construct the path
 
