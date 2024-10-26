@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir Flask Flask-Cors pyinstaller
 EXPOSE 5000
 
 # Command to run the Flask app
-CMD ["python", "app.py"]
+CMD ["python", "host.py"]
