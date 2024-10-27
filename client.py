@@ -71,7 +71,7 @@ class RemoteDesktopPro:
             "events_processed": 0,
             "start_time": None
         }
-        
+        #
         # Load saved settings
         self.load_settings()
         
