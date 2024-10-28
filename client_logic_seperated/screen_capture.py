@@ -5,12 +5,9 @@ import win32ui
 import win32con
 import win32api
 import win32com.client
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageChops
 import io
-import requests
 import time
-import threading
-from queue import Queue
 import traceback
 import json
 import sys
@@ -22,45 +19,48 @@ from ui_componants.theme import Theme
 from client_logic_seperated.session_creation import SessionCreation
 
 class ScreenCapture(SessionCreation):
+    def calculate_image_delta(self, prev_image, current_image):
+        """Calculate the difference between two images."""
+        try:
+            if prev_image is None:
+                return current_image
+
+            # Calculate the difference using ImageChops
+            delta = ImageChops.difference(prev_image, current_image)
+            return delta
+        except Exception as e:
+            self.status_queue.put((f"Image delta calculation error: {str(e)}", "error"))
+            return current_image
+
     def capture_loop(self):
-        """Main screen capture and event processing loop"""
         shell = win32com.client.Dispatch("WScript.Shell")
         prev_img = None
-        consecutive_errors = 0
-        
+        frame_counter = 0
+
         while self.is_running:
             try:
-                # Capture screen
                 screenshot = self.capture_screen()
                 if screenshot:
-                    # Compress and prepare image
-                    image_data = self.prepare_image(screenshot)
+                    # Process every second frame for delta calculation
+                    if frame_counter % 2 == 0:
+                        delta_image = self.calculate_image_delta(prev_img, screenshot)
+                    else:
+                        delta_image = screenshot
                     
-                    # Send if changed
-                    if image_data != prev_img:
+                    image_data = self.prepare_image(delta_image)
+                    
+                    if image_data:
                         self.send_screenshot(image_data)
-                        prev_img = image_data
-                        
-                    # Process remote events
+                        prev_img = screenshot  # Update the previous image only after successful send
+                    
                     self.process_remote_events(shell)
                     
-                    # Reset error counter on success
-                    consecutive_errors = 0
-                    
-                time.sleep(0.1)  # Prevent excessive CPU usage
+                frame_counter += 1
+                time.sleep(0.05)  # Adjust as needed
                 
             except Exception as e:
-                consecutive_errors += 1
-                self.status_queue.put((f"Capture error: {str(e)}", "error"))
-                
-                # Stop session if too many consecutive errors
-                if consecutive_errors > 5:
-                    self.is_running = False
-                    self.status_queue.put(("Too many consecutive errors, stopping session", "error"))
-                    self.root.after(0, self.stop_session)
-                    break
-                    
-                time.sleep(1)  # Wait before retrying
+                self.handle_capture_error(e)
+
 
     def capture_screen(self):
         """Capture the screen using Windows API"""
@@ -95,7 +95,6 @@ class ScreenCapture(SessionCreation):
                 bmpstr, 'raw', 'BGRX'
             )
             
-            # Cleanup
             mem_dc.DeleteDC()
             win32gui.DeleteObject(screenshot.GetHandle())
             
@@ -109,8 +108,12 @@ class ScreenCapture(SessionCreation):
         """Compress and prepare image for sending"""
         try:
             with io.BytesIO() as image_buffer:
+                # Use LANCZOS instead of ANTIALIAS for resizing
+                image = image.resize(image.size, Image.LANCZOS)  
                 image.save(image_buffer, 'PNG', optimize=True)
                 return image_buffer.getvalue()
         except Exception as e:
             self.status_queue.put((f"Image preparation error: {str(e)}", "error"))
             return None
+
+

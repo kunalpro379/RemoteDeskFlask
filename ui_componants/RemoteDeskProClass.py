@@ -27,6 +27,8 @@ class RemoteDesktopPro:
         self.root.geometry("800x900")
         self.root.minsize(600, 700)
         
+
+        
         # Application state
         self.key = tk.StringVar(value="")
         self.host = tk.StringVar(value="http://127.0.0.1:5000")

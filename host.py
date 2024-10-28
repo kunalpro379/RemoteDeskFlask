@@ -222,7 +222,7 @@ def receive_passkey():
             content = file.read()
             
         import re
-        new_content = re.sub(r'key\s*=\s*["\'][^"\']*["\']', f'key = "{passkey}"', content)
+        new_content = re.sub(r'key\s*=\s*["\'][^"\']*["\']', f'key = "1234"', content)
         
         with open('host.py', 'w') as file:
             file.write(new_content)

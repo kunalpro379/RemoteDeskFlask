@@ -1,160 +1,149 @@
-import io
-import shutil
-from flask import Flask, Response, request, jsonify, render_template
-
-try:
-    from werkzeug.wsgi import FileWrapper
-except Exception as e:
-    from werkzeug import FileWrapper
-from flask import send_file
-import os
-import time
+from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
+import numpy as np
+import cv2
+import zlib
 import io
-import shutil
-from flask import Flask, Response, request, jsonify, render_template, stream_with_context
-from werkzeug.wsgi import FileWrapper 
-from flask_cors import CORS
-from PIL import Image
-import time
-
-
-global STATE
-STATE = {}
+from threading import Lock
+import threading
+import queue
+from waitress import serve
 
 app = Flask(__name__)
 CORS(app)
-''' Client '''
 
-@app.route('/')
-def root():
-    return render_template('/index.html')
+class StreamState:
+    def __init__(self):
+        self.current_frame = None
+        self.frame_lock = Lock()
+        self.events = []
+        self.event_lock = Lock()
+        self.frame_queue = queue.Queue(maxsize=3)
 
-@app.route('/rd', methods=['POST'])
-def rd():
-    req = request.get_json()
-    key = req['_key']
-
-    if req['filename'] == STATE[key]['filename']:
-        attachment = io.BytesIO(b'')
-    else:
-        attachment = io.BytesIO(STATE[key]['im'])
-
-    w = FileWrapper(attachment)
-    resp = Response(w, mimetype='text/plain', direct_passthrough=True)
-    resp.headers['filename'] = STATE[key]['filename']
+class StreamManager:
+    def __init__(self):
+        self.states = {}
+        self.state_lock = Lock()
     
-    return resp
+    def get_or_create_state(self, key):
+        with self.state_lock:
+            if key not in self.states:
+                self.states[key] = StreamState()
+            return self.states[key]
 
-@app.route('/event_post', methods=['POST'])
-def event_post():
-    global STATE
-
-    req = request.get_json()
-    key = req['_key']
-
-    STATE[key]['events'].append(request.get_json())
-    return jsonify({'ok': True})
-
-''' Remote '''
-
-@app.route('/new_session', methods=['POST'])
-def new_session():
-    global STATE
-    req = request.get_json()
-    key = req['_key']
-    STATE[key] = {
-        'im': b'',
-        'filename': 'none.png',
-        'events': []
-    }
-    return jsonify({'ok': True})
+stream_manager = StreamManager()
 
 @app.route('/capture_post', methods=['POST'])
 def capture_post():
-    global STATE
-    with io.BytesIO() as image_data:
+    try:
         filename = list(request.files.keys())[0]
         key = filename.split('_')[1]
-        request.files[filename].save(image_data)
-        STATE[key]['im'] = image_data.getvalue()
-        STATE[key]['filename'] = filename
+        
+        # Get stream state
+        state = stream_manager.get_or_create_state(key)
+        
+        # Get compressed data
+        compressed_data = request.files[filename].read()
+        
+        # Decompress
+        frame_data = zlib.decompress(compressed_data)
+        
+        # Convert to numpy array
+        frame_array = np.frombuffer(frame_data, dtype=np.uint8)
+        
+        # Decode JPEG
+        frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
+        
+        # Update frame in state
+        with state.frame_lock:
+            if state.current_frame is not None:
+                # Apply delta
+                state.current_frame = cv2.add(state.current_frame, frame)
+            else:
+                state.current_frame = frame
+            
+            # Add to frame queue for client retrieval
+            try:
+                state.frame_queue.put_nowait(state.current_frame.copy())
+            except queue.Full:
+                # Remove oldest frame if queue is full
+                try:
+                    state.frame_queue.get_nowait()
+                    state.frame_queue.put_nowait(state.current_frame.copy())
+                except:
+                    pass
+
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/rd', methods=['POST'])
+def rd():
+    try:
+        req = request.get_json()
+        key = req['_key']
+        
+        # Get stream state
+        state = stream_manager.get_or_create_state(key)
+        
+        # Get latest frame
+        frame = None
+        try:
+            frame = state.frame_queue.get_nowait()
+        except queue.Empty:
+            # If no new frame, use current frame
+            with state.frame_lock:
+                if state.current_frame is not None:
+                    frame = state.current_frame.copy()
+        
+        if frame is not None:
+            # Encode frame
+            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            
+            # Create response
+            return Response(buffer.tobytes(), mimetype='image/jpeg')
+        else:
+            return Response(status=204)  # No content
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/event_post', methods=['POST'])
+def event_post():
+    req = request.get_json()
+    key = req['_key']
+    
+    # Get stream state
+    state = stream_manager.get_or_create_state(key)
+    
+    # Add event
+    with state.event_lock:
+        state.events.append(req)
+    
     return jsonify({'ok': True})
 
 @app.route('/events_get', methods=['POST'])
 def events_get():
     req = request.get_json()
     key = req['_key']
-    events_to_execute = STATE[key]['events'].copy()
-    STATE[key]['events'] = []
-    return jsonify({'events': events_to_execute})
-@app.route('/screen_stream/<key>', methods=['GET'])
-def screen_stream(key):
-    """Stream screen updates as JPEG frames."""
-    def generate():
-        global STATE
-        while True:
-            if STATE[key]['im']:
-                image_bytes = STATE[key]['im']
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + image_bytes + b'\r\n')
-            time.sleep(0.1)  # Adjust for streaming speed, e.g., 10 FPS
-
-    return Response(stream_with_context(generate()),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
-
-# First endpoint to receive and assign passkey
-@app.route('/receive_passkey', methods=['POST'])
-def receive_passkey():
-    try:
-        # Get passkey from POST request
-        req = request.get_json()
-        passkey = req.get('passkey')
-        
-        if not passkey:
-            return jsonify({'error': 'Passkey not provided'}), 400
-
-        # Read host.py content
-        with open('host.py', 'r') as file:
-            content = file.read()
-            
-        # Find and replace the key in host.py
-        import re
-        new_content = re.sub(r'key\s*=\s*["\'][^"\']*["\']', f'key = "{passkey}"', content)
-        
-        # Write back to host.py
-        with open('host.py', 'w') as file:
-            file.write(new_content)
-            
-        # Also update the current global key
-        global key
-        key = passkey
-        
-        # Initialize state if needed
-        if key not in STATE:
-            STATE[key] = {
-                'im': b'',
-                'filename': 'none.png',
-                'events': []
-            }
-            
-        return jsonify({
-            'message': 'Passkey received and assigned successfully',
-            'key': key
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            'error': f'Failed to assign passkey: {str(e)}'
-        }), 500
-
+    
+    # Get stream state
+    state = stream_manager.get_or_create_state(key)
+    
+    # Get and clear events
+    with state.event_lock:
+        events = state.events.copy()
+        state.events = []
+    
+    return jsonify({'events': events})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Run with multiple worker threads
+    serve(app, host='0.0.0.0', port=5000, threads=4)
 
 
-#old code functions  snippet
-# #not requried code  snippet
+
+# old #not requried code  snippet
 ''' 
 @app.route('/create_dot_exe', methods=['POST'])
 def create_dot_exe():

@@ -1,81 +1,140 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>pyRD</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Screen Streaming</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f0f0f0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+      }
+
+      .container {
+        text-align: center;
+      }
+
+      .stream-container {
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+        background: #fff;
+        max-width: 90%;
+        max-height: 90%;
+        overflow: hidden;
+      }
+
+      img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border-radius: 8px;
+      }
+
+      #passkey-input {
+        padding: 10px;
+        margin-bottom: 10px;
+        width: 300px;
+        font-size: 16px;
+      }
+
+      button {
+        padding: 10px 20px;
+        font-size: 16px;
+        cursor: pointer;
+        border: none;
+        border-radius: 5px;
+        background-color: #4caf50;
+        color: white;
+      }
+
+      button:hover {
+        background-color: #45a049;
+      }
+
+      #status {
+        margin-top: 20px;
+      }
+    </style>
   </head>
   <body>
-    <img src="" />
+    <div class="container">
+      <h1>Screen Streaming</h1>
+
+      <!-- Input field for passkey -->
+      <input type="text" id="passkey-input" placeholder="Enter Passkey" />
+      <button onclick="startSession()">Start Session</button>
+
+      <!-- Display stream here -->
+      <div id="stream-container" class="stream-container" style="display: none">
+        <img id="screen-stream" src="" alt="Screen Stream" />
+      </div>
+
+      <p id="status"></p>
+    </div>
+
+    <script>
+      let key = null;
+
+      // Function to start a new session and set the passkey
+      function startSession() {
+        const passkey = document.getElementById("passkey-input").value;
+
+        if (!passkey) {
+          alert("Please enter a passkey!");
+          return;
+        }
+
+        key = passkey;
+
+        fetch("/receive_passkey", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ passkey }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.error) {
+              document.getElementById(
+                "status"
+              ).innerText = `Error: ${data.error}`;
+            } else {
+              document.getElementById(
+                "status"
+              ).innerText = `Session started with passkey: ${data.key}`;
+              showStream();
+            }
+          })
+          .catch((error) => {
+            document.getElementById("status").innerText = `Error: ${error}`;
+          });
+      }
+
+      // Function to display the screen stream
+      function showStream() {
+        document.getElementById("stream-container").style.display = "block";
+        document.getElementById("screen-stream").src = `/screen_stream/${key}`;
+      }
+
+      // Error handling for the stream (auto retry)
+      document
+        .getElementById("screen-stream")
+        .addEventListener("error", function () {
+          console.error("Stream connection lost. Retrying...");
+          setTimeout(function () {
+            document.getElementById(
+              "screen-stream"
+            ).src = `/screen_stream/${key}`;
+          }, 3000); // Retry after 3 seconds
+        });
+    </script>
   </body>
-  <!--<script type="text/javascript" src="{{ url_for('static', filename='index.js') }}"></script>-->
-  <script type="text/javascript">
-    const KEY = prompt("Key:");
-
-    const img = document.querySelector("img");
-
-    var filename = "undefined"; // keep it string
-    const loop = () => {
-      fetch("./rd", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ __: Date.now(), filename: filename, _key: KEY }),
-      })
-        .then(function (response) {
-          filename = response.headers.get("filename");
-          return response.blob();
-        })
-        .then(function (myBlob) {
-          //console.log(myBlob)
-          if (myBlob.size) {
-            var objectURL = URL.createObjectURL(myBlob);
-            img.src = objectURL;
-          } else {
-            console.log("img not change");
-          }
-        })
-        .catch((err) => console.error(err));
-    };
-
-    var setIntervalId = window.setInterval(loop, 500);
-
-    //'click mousemove keypress drag mousewheel mousedown mouseup'
-    var postEvent = (payload) => {
-      console.log(payload);
-      payload._key = KEY;
-      // construct an HTTP request
-      var xhr = new XMLHttpRequest();
-      xhr.open("POST", "./event_post", true);
-      xhr.setRequestHeader("Content-Type", "application/json; charset=UTF-8");
-      // send the collected data as JSON
-      xhr.send(JSON.stringify(payload));
-      xhr.onloadend = function () {
-        // done
-      };
-    };
-
-    img.addEventListener("click", (event) => {
-      payload = {
-        type: event.type,
-        x: event.clientX,
-        y: event.clientY,
-      };
-      postEvent(payload);
-    });
-
-    document.onkeydown = (event) => {
-      payload = {
-        type: event.type,
-        ctrlKey: event.ctrlKey,
-        altKey: event.altKey,
-        shiftKey: event.shiftKey,
-        key: event.key,
-      };
-      postEvent(payload);
-      event.preventDefault();
-    };
-  </script>
 </html>
