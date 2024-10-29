@@ -19,6 +19,7 @@ from ui_componants.theme import Theme
 from client_logic_seperated.session_creation import SessionCreation
 
 class ScreenCapture(SessionCreation):
+
     def calculate_image_delta(self, prev_image, current_image):
         """Calculate the difference between two images."""
         try:

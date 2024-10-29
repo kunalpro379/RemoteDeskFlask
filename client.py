@@ -1,17 +1,14 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, font
-
-
 import time
 from queue import Queue
-
 from datetime import datetime
 from host_machine import RemoteDesktopPro
 from ui_componants.constants import ConnectionStatus
 from ui_componants.theme import Theme
 from client_logic_seperated.handle_events import HandleEvents
+
 class ExtendedFromRemoteDesktopPro(HandleEvents):
-    
     def update_statistics(self):
         """Update session statistics"""
         if self.stats["start_time"]:
@@ -46,10 +43,7 @@ class ExtendedFromRemoteDesktopPro(HandleEvents):
                 self.root.destroy()
         else:
             self.root.destroy()
-    
-    
-    
-    
+
 def main():
     """Main application entry point"""
     try:
@@ -59,7 +53,7 @@ def main():
         pass
         
     root = tk.Tk()
-    app = ExtendedFromRemoteDesktopPro(root)
+    app = ExtendedFromRemoteDesktopPro(root)  # Pass root to the constructor
     root.mainloop()
 
 if __name__ == "__main__":

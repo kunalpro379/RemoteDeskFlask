@@ -1,3 +1,4 @@
+import socket
 import tkinter as tk
 from tkinter import ttk, messagebox, font
 import win32gui
@@ -19,9 +20,18 @@ from datetime import datetime
 
 from ui_componants.constants import ConnectionStatus
 from ui_componants.theme import Theme
-
+SERVER_HOST = "127.0.0.1"  
+SERVER_PORT = 8000         
+VIDEO_RESOLUTION = (1920, 1080)  
+VIDEO_FPS = 100
+# client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+# client_socket.connect((SERVER_HOST, SERVER_PORT))
+print('connected to server...')
 class RemoteDesktopPro:
     def __init__(self, root):
+        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.client_socket.connect((SERVER_HOST, SERVER_PORT))
+
         self.root = root
         self.root.title("Remote Desktop Control Pro")
         self.root.geometry("800x900")
