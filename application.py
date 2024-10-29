@@ -10,14 +10,6 @@ from flask import send_file
 import os
 import time
 from flask_cors import CORS
-import io
-import shutil
-from flask import Flask, Response, request, jsonify, render_template, stream_with_context
-from werkzeug.wsgi import FileWrapper 
-from flask_cors import CORS
-from PIL import Image
-import time
-
 
 global STATE
 STATE = {}
@@ -61,6 +53,7 @@ def event_post():
 @app.route('/new_session', methods=['POST'])
 def new_session():
     global STATE
+
     req = request.get_json()
     key = req['_key']
     STATE[key] = {
@@ -68,17 +61,20 @@ def new_session():
         'filename': 'none.png',
         'events': []
     }
+
     return jsonify({'ok': True})
 
 @app.route('/capture_post', methods=['POST'])
 def capture_post():
     global STATE
+    
     with io.BytesIO() as image_data:
         filename = list(request.files.keys())[0]
         key = filename.split('_')[1]
         request.files[filename].save(image_data)
         STATE[key]['im'] = image_data.getvalue()
         STATE[key]['filename'] = filename
+
     return jsonify({'ok': True})
 
 @app.route('/events_get', methods=['POST'])
@@ -88,20 +84,6 @@ def events_get():
     events_to_execute = STATE[key]['events'].copy()
     STATE[key]['events'] = []
     return jsonify({'events': events_to_execute})
-@app.route('/screen_stream/<key>', methods=['GET'])
-def screen_stream(key):
-    """Stream screen updates as JPEG frames."""
-    def generate():
-        global STATE
-        while True:
-            if STATE[key]['im']:
-                image_bytes = STATE[key]['im']
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + image_bytes + b'\r\n')
-            time.sleep(0.1)  # Adjust for streaming speed, e.g., 10 FPS
-
-    return Response(stream_with_context(generate()),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # First endpoint to receive and assign passkey
 @app.route('/receive_passkey', methods=['POST'])

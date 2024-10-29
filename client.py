@@ -11,6 +11,7 @@ from ui_componants.constants import ConnectionStatus
 from ui_componants.theme import Theme
 from client_logic_seperated.handle_events import HandleEvents
 class ExtendedFromRemoteDesktopPro(HandleEvents):
+    
     def update_statistics(self):
         """Update session statistics"""
         if self.stats["start_time"]:
@@ -18,10 +19,10 @@ class ExtendedFromRemoteDesktopPro(HandleEvents):
             hours = int(duration // 3600)
             minutes = int((duration % 3600) // 60)
             seconds = int(duration % 60)
-            
+
             self.stats_labels["Duration"].configure(
                 text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
-            
+
             # Update other stats
             self.stats_labels["Data Transferred"].configure(
                 text=f"{self.stats['bytes_sent'] / 1024:.1f} KB")
@@ -29,13 +30,14 @@ class ExtendedFromRemoteDesktopPro(HandleEvents):
                 text=str(self.stats["frames_captured"]))
             self.stats_labels["Events Processed"].configure(
                 text=str(self.stats["events_processed"]))
-            
+
             if duration > 0:
                 fps = self.stats["frames_captured"] / duration
                 self.stats_labels["Average FPS"].configure(text=f"{fps:.1f}")
-            
+
             quality = min(100, (fps * 10)) if fps > 0 else 0
             self.quality_bar["value"] = quality
+
     def on_closing(self):
         """Handle application closing"""
         if self.is_running:
@@ -44,7 +46,10 @@ class ExtendedFromRemoteDesktopPro(HandleEvents):
                 self.root.destroy()
         else:
             self.root.destroy()
-
+    
+    
+    
+    
 def main():
     """Main application entry point"""
     try:
