@@ -6,7 +6,8 @@ pyautogui
 pytesseract
 opencv-python
 numpy
-pandas
+pandaspip 
+
 blinker==1.8.2
 click==8.1.7
 colorama==0.4.6
@@ -16,3 +17,12 @@ Jinja2==3.1.4
 MarkupSafe==3.0.2
 Werkzeug==3.0.4
 flask-cors
+Flask==2.0.3
+flask-cors==3.0.10
+numpy==1.21.2
+opencv-python==4.5.3.20210921
+Pillow==8.4.0
+pyautogui==0.9.53
+requests==2.26.0
+pywin32==301
+mss==6.1.0
