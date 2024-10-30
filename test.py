@@ -14,59 +14,72 @@ ENCODE_QUALITY = 80            # JPEG quality (1-100), higher is better quality
 MOUSE_CURSOR_SIZE = 10         # Size of mouse cursor symbol
 
 def screen_record_and_send():
-    # Initialize screen capture using mss
-    with mss.mss() as sct:
-        # Get the dimensions of the primary monitor
-        monitor = sct.monitors[1]  # Use monitor[1] for the primary display
-        # Uncomment the next line if you want to specify a specific monitor
-        # monitor = sct.monitors[2]  # Replace 2 with the desired monitor index
+        # Initialize screen capture using mss
+        with mss.mss() as sct:
+            print('Initializing screen capture...')
 
-        # Initialize socket connection to server
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect((SERVER_HOST, SERVER_PORT))
+            # Get the dimensions of the primary monitor
+            monitor = sct.monitors[1]  # Use monitor[1] for the primary display
+            print(f'Primary monitor dimensions: {monitor}')
 
-        # Set socket options for low latency
-        client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            # Initialize socket connection to server
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client_socket.connect((SERVER_HOST, SERVER_PORT))
+            print('Connected to server at', SERVER_HOST, SERVER_PORT)
 
-        try:
-            while True:
-                # Capture the screen
-                img = sct.grab(monitor)
-                img_np = np.array(img)
+            # Set socket options for low latency
+            client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-                # Convert BGRA to BGR
-                frame = cv2.cvtColor(img_np, cv2.COLOR_BGRA2BGR)
+            try:
+                while True:
+                    # Capture the screen
+                    img = sct.grab(monitor)
+                    img_np = np.array(img)
 
-                # Get mouse position
-                mouse_x, mouse_y = pyautogui.position()
+                    # Convert BGRA to BGR
+                    frame = cv2.cvtColor(img_np, cv2.COLOR_BGRA2BGR)
 
-                # Draw mouse cursor as a red circle
-                cv2.circle(frame, (mouse_x, mouse_y), MOUSE_CURSOR_SIZE, (0, 0, 255), -1)
+                    # Get mouse position
+                    mouse_x, mouse_y = pyautogui.position()
 
-                # Encode frame as JPEG with adjustable quality
-                encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), ENCODE_QUALITY]
-                _, frame_bytes = cv2.imencode(".jpg", frame, encode_params)
-                frame_data = frame_bytes.tobytes()
-                frame_size = len(frame_data)
+                    # Draw mouse cursor as a red circle
+                    cv2.circle(frame, (mouse_x, mouse_y), MOUSE_CURSOR_SIZE, (0, 0, 255), -1)
 
-                # Send frame size followed by frame data
-                client_socket.sendall(struct.pack(">I", frame_size) + frame_data)
+                    # Encode frame as JPEG with adjustable quality
+                    encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), ENCODE_QUALITY]
+                    _, frame_bytes = cv2.imencode(".jpg", frame, encode_params)
+                    frame_data = frame_bytes.tobytes()
+                    frame_size = len(frame_data)
 
-                # Send mouse position
-                client_socket.sendall(struct.pack(">II", mouse_x, mouse_y))
+                    # Log frame details
+                    print(f'Sending frame of size: {frame_size} bytes')
+                    print(f'Mouse position: ({mouse_x}, {mouse_y})')
 
-                # Receive acknowledgment
-                ack = client_socket.recv(1024)
-                if ack.decode() != "ACK":
-                    print("Error sending frame")
+                    # Send frame size followed by frame data
+                    client_socket.sendall(struct.pack(">I", frame_size) + frame_data)
 
-                # Control FPS
-                time.sleep(1 / VIDEO_FPS)
+                    # Send mouse position
+                    client_socket.sendall(struct.pack(">II", mouse_x, mouse_y))
 
-        except Exception as e:
-            print(f"Error: {e}")
-        finally:
-            client_socket.close()
+                    # Log sending status
+                    print('Frame and mouse position sent. Waiting for acknowledgment...')
+
+                    # Receive acknowledgment
+                    ack = client_socket.recv(1024)
+                    if ack.decode() == "ACK":
+                        print("Frame sent successfully, ACK received.")
+                    else:
+                        print("Error: ACK not received.")
+
+                    # Control FPS
+                    time.sleep(1 / VIDEO_FPS)
+
+            except Exception as e:
+                print(f"Error during streaming: {e}")
+            finally:
+                client_socket.close()
+                print("Connection closed.")
+
 
 if __name__ == "__main__":
     screen_record_and_send()

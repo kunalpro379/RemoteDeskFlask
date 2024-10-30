@@ -26,7 +26,6 @@ VIDEO_RESOLUTION = (1920, 1080)
 VIDEO_FPS = 100
 # client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 # client_socket.connect((SERVER_HOST, SERVER_PORT))
-print('connected to server...')
 class RemoteDesktopPro:
     def __init__(self, root):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -188,6 +187,7 @@ class RemoteDesktopPro:
                                      text="▶ Start Session",
                                      style="Primary.TButton",
                                      command=self.start_session)
+        
         self.start_button.pack(side="left", padx=(0, 10))
         
         self.stop_button = ttk.Button(button_frame,
@@ -342,7 +342,7 @@ class RemoteDesktopPro:
         self.status_label.configure(text=status_text)
 
 
-        def update_statistics(self):
+    def update_statistics(self):
             """Update session statistics"""
             if self.stats["start_time"]:
                 duration = time.time() - self.stats["start_time"]
@@ -384,3 +384,15 @@ class RemoteDesktopPro:
             
         self.root.after(100, self.start_status_update)
 
+
+    def start_status_update(self):
+        self.update_statistics()
+        self.root.after(1000, self.start_status_update)
+
+
+    def calculate_connection_quality(self):
+        if self.stats["frames_captured"] > 0:
+            quality = min((self.stats["bytes_sent"] / self.stats["frames_captured"]) / 1024, 100)  # Example formula
+            self.quality_bar["value"] = quality
+        else:
+            self.quality_bar["value"] = 0

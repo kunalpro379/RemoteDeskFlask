@@ -1,76 +1,86 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Screen Sharing</title>
-    <style>
-      body {
-        margin: 0;
-        padding: 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        background-color: #f0f0f0;
-      }
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>pyRD</title>
+</head>
+<body>
+    <h1>Video Feed</h1>
+    <img id="frame" src="/video_feed" alt="Video Feed" style="width: 100%; height: auto;">
 
-      #video-container {
-        max-width: 80%;
-        max-height: 80%;
-        width: auto;
-        height: auto;
-        border: 1px solid #ccc;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-      }
+    <script type="text/javascript">
+        const KEY = prompt('Key:');
+        const img = document.getElementById('frame');
 
-      #video-container video {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="video-container">
-      <video id="video-feed" autoplay></video>
-    </div>
+        var filename = 'undefined'; // keep it string
 
-    <script>
-      const videoFeed = document.getElementById("video-feed");
+        // Function to fetch and display frames from the server
+        const fetchFrames = () => {
+            fetch('/rd', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ __: Date.now(), filename: filename, _key: KEY })
+            })
+            .then(response => {
+                filename = response.headers.get('filename');
+                return response.blob();
+            })
+            .then(myBlob => {
+                if (myBlob.size) {
+                    const objectURL = URL.createObjectURL(myBlob);
+                    img.src = objectURL;
+                } else {
+                    console.log('Image not changed');
+                }
+            })
+            .catch(err => console.error('Error fetching frames:', err));
+        };
 
-      async function streamVideo() {
-        try {
-          const response = await fetch("/video_feed");
-          const reader = response.body.getReader();
-          const contentLength = parseInt(
-            response.headers.get("Content-Length"),
-            10
-          );
+        // Call fetchFrames at intervals
+        var setIntervalId = window.setInterval(fetchFrames, 500);
 
-          let receivedLength = 0;
-          const chunks = [];
+        var postEvent = (payload) => {
+            payload._key = KEY;
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', './event_post', true);
+            xhr.setRequestHeader('Content-Type', 'application/json; charset=UTF-8');
+            xhr.onload = () => {
+                if (xhr.status !== 200) {
+                    console.error('Error posting event:', xhr.statusText);
+                } else {
+                    console.log('Event posted successfully:', payload);
+                }
+            };
+            xhr.onerror = () => {
+                console.error('Network error occurred while posting event');
+            };
+            xhr.send(JSON.stringify(payload));
+        };
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-              break;
-            }
+        img.addEventListener('click', event => {
+            const payload = {
+                'type': event.type,
+                'x': event.clientX,
+                'y': event.clientY
+            };
+            postEvent(payload);
+        });
 
-            chunks.push(value);
-            receivedLength += value.length;
-
-            console.log(`Received ${receivedLength} of ${contentLength}`);
-          }
-
-          const blob = new Blob(chunks, { type: "video/mp4" });
-          videoFeed.src = URL.createObjectURL(blob);
-        } catch (error) {
-          console.error("Error streaming video:", error);
-        }
-      }
-
-      streamVideo();
+        document.onkeydown = (event) => {
+            const payload = {
+                'type': event.type,
+                'ctrlKey': event.ctrlKey,
+                'altKey': event.altKey,
+                'shiftKey': event.shiftKey,
+                'key': event.key
+            };
+            postEvent(payload);
+            event.preventDefault();
+        };
     </script>
-  </body>
+</body>
 </html>

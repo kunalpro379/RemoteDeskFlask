@@ -3,12 +3,14 @@ from tkinter import ttk, messagebox, font
 import time
 from queue import Queue
 from datetime import datetime
+from client_logic_seperated.session_creation import SessionCreation
 from host_machine import RemoteDesktopPro
 from ui_componants.constants import ConnectionStatus
 from ui_componants.theme import Theme
 from client_logic_seperated.handle_events import HandleEvents
-
-class ExtendedFromRemoteDesktopPro(HandleEvents):
+class ExtendedFromRemoteDesktopPro(SessionCreation):
+    def __init__(self, root):  # Include root as a parameter
+        super().__init__(root)  # Pass root to the superclass
     def update_statistics(self):
         """Update session statistics"""
         if self.stats["start_time"]:

@@ -23,7 +23,8 @@ from client_logic_seperated.screen_capture import ScreenCapture
 
 
 class HandleEvents(ScreenCapture):
-
+    def __init__(self, root):  # Include root as a parameter
+        super().__init__(root)  # Pass root to the superclass
     def send_screenshot(self, image_data):
         """Send screenshot to server"""
         try:

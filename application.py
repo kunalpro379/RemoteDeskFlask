@@ -1,35 +1,118 @@
 import io
-import shutil
 import socket
 import struct
 import cv2
 from flask import Flask, Response, request, jsonify, render_template
 import numpy as np
-
-try:
-    from werkzeug.wsgi import FileWrapper
-except Exception as e:
-    from werkzeug import FileWrapper
-from flask import send_file
-import os
-import time
+from werkzeug.wsgi import FileWrapper
 from flask_cors import CORS
-
-global STATE
-STATE = {}
+import threading
+import time
+import re
 
 app = Flask(__name__)
 CORS(app)
-''' Client '''
+
+latest_frame = None
+mouse_position = (0, 0)
+lock = threading.Lock()  # To manage access to shared variables
+STATE = {}
 
 @app.route('/')
 def root():
-    return render_template('/index.html')
+    return render_template('index.html')
+
+def get_frame():
+    """Generator function for the video stream"""
+    global latest_frame, mouse_position
+    while True:
+        if latest_frame is not None:
+            with lock:  # Acquire lock for thread-safe access
+                frame_copy = latest_frame.copy()
+                # Draw the mouse cursor on the frame
+                cv2.circle(frame_copy, mouse_position, 10, (0, 0, 255), -1)
+
+            # Encode the frame as JPEG
+            _, buffer = cv2.imencode('.jpg', frame_copy)
+            frame_bytes = buffer.tobytes()
+
+            # Yield the frame in the correct format
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        else:
+            time.sleep(0.1)
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(
+        get_frame(),
+        mimetype='multipart/x-mixed-replace; boundary=frame'
+    )
+
+def start_server_socket():
+    global latest_frame, mouse_position
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind(('0.0.0.0', 8000))
+    server_socket.listen(1)
+    print("Server is listening for incoming frames...")
+
+    while True:
+        client_socket, addr = server_socket.accept()
+        print(f"Connected to {addr}")
+
+        try:
+            while True:
+                # Receive the size of the frame data
+                packed_size = client_socket.recv(4)
+                if not packed_size:
+                    break
+                frame_size = struct.unpack(">I", packed_size)[0]
+
+                # Receive the actual frame data
+                frame_data = b''
+                remaining = frame_size
+                while remaining > 0:
+                    chunk = client_socket.recv(min(remaining, 4096))
+                    if not chunk:
+                        break
+                    frame_data += chunk
+                    remaining -= len(chunk)
+
+                # Convert frame data to numpy array
+                frame_np = np.frombuffer(frame_data, np.uint8)
+                frame = cv2.imdecode(frame_np, cv2.IMREAD_COLOR)
+
+                if frame is not None:
+                    with lock:  # Acquire lock for thread-safe access
+                        latest_frame = frame
+
+                # Receive mouse position
+                mouse_data = client_socket.recv(8)  # 4 bytes for x, 4 bytes for y
+                if mouse_data:
+                    mouse_x, mouse_y = struct.unpack(">II", mouse_data)
+                    with lock:  # Acquire lock for thread-safe access
+                        mouse_position = (mouse_x, mouse_y)
+
+                # Send acknowledgment to client
+                client_socket.sendall(b"ACK")
+
+        except Exception as e:
+            print(f"Error: {e}")
+        finally:
+            client_socket.close()
 
 @app.route('/rd', methods=['POST'])
 def rd():
     req = request.get_json()
     key = req['_key']
+
+    if key not in STATE:
+        # Initialize state for new key
+        STATE[key] = {
+            'im': b'',
+            'filename': 'none.png',
+            'events': []
+        }
 
     if req['filename'] == STATE[key]['filename']:
         attachment = io.BytesIO(b'')
@@ -39,7 +122,7 @@ def rd():
     w = FileWrapper(attachment)
     resp = Response(w, mimetype='text/plain', direct_passthrough=True)
     resp.headers['filename'] = STATE[key]['filename']
-    
+
     return resp
 
 @app.route('/event_post', methods=['POST'])
@@ -49,10 +132,18 @@ def event_post():
     req = request.get_json()
     key = req['_key']
 
-    STATE[key]['events'].append(request.get_json())
-    return jsonify({'ok': True})
+    if key not in STATE:
+        # Initialize the state for the new key
+        # STATE[key] = {
+        #     'im': b'',
+        #     'filename': 'none.png',
+        #     'events': []
+        # }
+        STATE[key] = {'im': b'', 'filename': 'none.png', 'events': []}
 
-''' Remote '''
+
+    STATE[key]['events'].append(req)
+    return jsonify({'ok': True})
 
 @app.route('/new_session', methods=['POST'])
 def new_session():
@@ -71,7 +162,7 @@ def new_session():
 @app.route('/capture_post', methods=['POST'])
 def capture_post():
     global STATE
-    
+
     with io.BytesIO() as image_data:
         filename = list(request.files.keys())[0]
         key = filename.split('_')[1]
@@ -86,56 +177,52 @@ def events_get():
     req = request.get_json()
     key = req['_key']
     events_to_execute = STATE[key]['events'].copy()
-    STATE[key]['events'] = []
+    STATE[key]['events'] = []  # Clear after copying
     return jsonify({'events': events_to_execute})
 
-# First endpoint to receive and assign passkey
 @app.route('/receive_passkey', methods=['POST'])
 def receive_passkey():
     try:
-        # Get passkey from POST request
         req = request.get_json()
         passkey = req.get('passkey')
-        
+
         if not passkey:
             return jsonify({'error': 'Passkey not provided'}), 400
 
-        # Read host.py content
         with open('host.py', 'r') as file:
             content = file.read()
-            
-        # Find and replace the key in host.py
-        import re
-        new_content = re.sub(r'key\s*=\s*["\'][^"\']*["\']', f'key = "{passkey}"', content)
-        
-        # Write back to host.py
+
+        new_content = re.sub(r'key\s*=\s*["\']([^"\']+)["\']', f'key = "{passkey}"', content)
+
         with open('host.py', 'w') as file:
             file.write(new_content)
-            
-        # Also update the current global key
-        global key
-        key = passkey
-        
-        # Initialize state if needed
-        if key not in STATE:
-            STATE[key] = {
+
+        global STATE
+        if passkey not in STATE:
+            STATE[passkey] = {
                 'im': b'',
                 'filename': 'none.png',
                 'events': []
             }
-            
-        return jsonify({
-            'message': 'Passkey received and assigned successfully',
-            'key': key
-        }), 200
-        
+
+        return jsonify({'message': 'Passkey received and assigned successfully', 'key': passkey}), 200
+
     except Exception as e:
-        return jsonify({
-            'error': f'Failed to assign passkey: {str(e)}'
-        }), 500
+        return jsonify({'error': f'Failed to assign passkey: {str(e)}'}), 500
+
+# Start the server socket in a separate thread
+socket_thread = threading.Thread(target=start_server_socket, daemon=True)
+socket_thread.start()
 
 
 
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+
+
+
+
+'''
 def start_server_socket():
     global latest_frame
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -176,13 +263,10 @@ def start_server_socket():
                 client_socket.sendall(b"ACK")
         finally:
             client_socket.close()
+'''
 
-if __name__ == '__main__':
-    import threading
 
-    threading.Thread(target=start_server_socket, daemon=True).start()
-    
-    app.run(host='0.0.0.0', port=5000, debug=False)
+
 
 
 #old code functions  snippet
