@@ -1,86 +1,95 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>pyRD</title>
-</head>
-<body>
+  </head>
+  <body>
     <h1>Video Feed</h1>
-    <img id="frame" src="/video_feed" alt="Video Feed" style="width: 100%; height: auto;">
+    <img
+      id="frame"
+      src="/video_feed"
+      alt="Video Feed"
+      style="width: 100%; height: auto"
+    />
 
     <script type="text/javascript">
-        const KEY = prompt('Key:');
-        const img = document.getElementById('frame');
+      const KEY = prompt("Key:");
+      const img = document.getElementById("frame");
 
-        var filename = 'undefined'; // keep it string
+      var filename = "undefined"; // keep it string
 
-        // Function to fetch and display frames from the server
-        const fetchFrames = () => {
-            fetch('/rd', {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ __: Date.now(), filename: filename, _key: KEY })
-            })
-            .then(response => {
-                filename = response.headers.get('filename');
-                return response.blob();
-            })
-            .then(myBlob => {
-                if (myBlob.size) {
-                    const objectURL = URL.createObjectURL(myBlob);
-                    img.src = objectURL;
-                } else {
-                    console.log('Image not changed');
-                }
-            })
-            .catch(err => console.error('Error fetching frames:', err));
+      // Function to fetch and display frames from the server
+      const fetchFrames = () => {
+        fetch("/rd", {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            __: Date.now(),
+            filename: filename,
+            _key: KEY,
+          }),
+        })
+          .then((response) => {
+            filename = response.headers.get("filename");
+            return response.blob();
+          })
+          .then((myBlob) => {
+            if (myBlob.size) {
+              const objectURL = URL.createObjectURL(myBlob);
+              img.src = objectURL;
+            } else {
+              console.log("Image not changed");
+            }
+          })
+          .catch((err) => console.error("Error fetching frames:", err));
+      };
+
+      // Call fetchFrames at intervals
+      var setIntervalId = window.setInterval(fetchFrames, 500);
+
+      var postEvent = (payload) => {
+        payload._key = KEY;
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", "./event_post", true);
+        xhr.setRequestHeader("Content-Type", "application/json; charset=UTF-8");
+        xhr.onload = () => {
+          if (xhr.status !== 200) {
+            console.error("Error posting event:", xhr.statusText);
+          } else {
+            console.log("Event posted successfully:", payload);
+          }
         };
-
-        // Call fetchFrames at intervals
-        var setIntervalId = window.setInterval(fetchFrames, 500);
-
-        var postEvent = (payload) => {
-            payload._key = KEY;
-            var xhr = new XMLHttpRequest();
-            xhr.open('POST', './event_post', true);
-            xhr.setRequestHeader('Content-Type', 'application/json; charset=UTF-8');
-            xhr.onload = () => {
-                if (xhr.status !== 200) {
-                    console.error('Error posting event:', xhr.statusText);
-                } else {
-                    console.log('Event posted successfully:', payload);
-                }
-            };
-            xhr.onerror = () => {
-                console.error('Network error occurred while posting event');
-            };
-            xhr.send(JSON.stringify(payload));
+        xhr.onerror = () => {
+          console.error("Network error occurred while posting event");
         };
+        xhr.send(JSON.stringify(payload));
+      };
 
-        img.addEventListener('click', event => {
-            const payload = {
-                'type': event.type,
-                'x': event.clientX,
-                'y': event.clientY
-            };
-            postEvent(payload);
-        });
-
-        document.onkeydown = (event) => {
-            const payload = {
-                'type': event.type,
-                'ctrlKey': event.ctrlKey,
-                'altKey': event.altKey,
-                'shiftKey': event.shiftKey,
-                'key': event.key
-            };
-            postEvent(payload);
-            event.preventDefault();
+      img.addEventListener("click", (event) => {
+        const payload = {
+          type: event.type,
+          x: event.clientX,
+          y: event.clientY,
         };
+        postEvent(payload);
+      });
+
+      document.onkeydown = (event) => {
+        const payload = {
+          type: event.type,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          key: event.key,
+        };
+        postEvent(payload);
+        event.preventDefault();
+      };
     </script>
-</body>
+  </body>
 </html>
